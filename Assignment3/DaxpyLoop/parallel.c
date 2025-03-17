@@ -2,65 +2,66 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define N (1 << 16)  // 2^16 = 65536 elements
+#define N (1 << 16)  // Size of vectors
 
-// Function to initialize vectors
-void initialize_vectors(double *X, double *Y, int size) {
-    for (int i = 0; i < size; i++) {
-        X[i] = 1.0;   // Example initialization
-        Y[i] = 2.0;   // Example initialization
+void daxpy(int n, double a, double *X, double *Y) {
+    for (int i = 0; i < n; i++) {
+        X[i] = a * X[i] + Y[i];
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
     int rank, size;
-    double a = 3.5;  // Scalar multiplier
     double *X = NULL, *Y = NULL;
+    double *local_X, *local_Y;
+    double a = 2.5;
+    int local_n;
     double start_time, end_time;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    int local_n = N / size;  // Each process gets a portion
+    local_n = N / size;  // Work per process
 
-    // Allocate local portions of X and Y
-    double *local_X = (double *)malloc(local_n * sizeof(double));
-    double *local_Y = (double *)malloc(local_n * sizeof(double));
+    // Allocate memory for local data
+    local_X = (double *)malloc(local_n * sizeof(double));
+    local_Y = (double *)malloc(local_n * sizeof(double));
 
-    // Master process initializes the full vectors
+    // Root initializes full vectors
     if (rank == 0) {
         X = (double *)malloc(N * sizeof(double));
         Y = (double *)malloc(N * sizeof(double));
-        initialize_vectors(X, Y, N);
+        for (int i = 0; i < N; i++) {
+            X[i] = 1.0;  // Example values
+            Y[i] = 2.0;
+        }
     }
 
-    // Scatter the data to all processes
+    // Scatter data among processes
     MPI_Scatter(X, local_n, MPI_DOUBLE, local_X, local_n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Scatter(Y, local_n, MPI_DOUBLE, local_Y, local_n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // Start timer
     start_time = MPI_Wtime();
 
-    // Perform local DAXPY computation
-    for (int i = 0; i < local_n; i++) {
-        local_X[i] = a * local_X[i] + local_Y[i];
-    }
+    // Perform DAXPY operation on local data
+    daxpy(local_n, a, local_X, local_Y);
 
     // End timer
     end_time = MPI_Wtime();
 
-    // Gather the results back
+    // Gather results back to root process
     MPI_Gather(local_X, local_n, MPI_DOUBLE, X, local_n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-    // Print execution time on master
+    // Root prints the execution time
     if (rank == 0) {
-        printf("Parallel Execution Time: %f seconds\n", end_time - start_time);
+        printf("MPI Execution Time: %f seconds\n", end_time - start_time);
         free(X);
         free(Y);
     }
 
-    // Free allocated memory
+    // Free local memory
     free(local_X);
     free(local_Y);
 
